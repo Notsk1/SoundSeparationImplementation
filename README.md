@@ -33,9 +33,13 @@ After the model has been trained, you can evaluate the model with setting "evalC
 
 Model outputs two spectrograms that can be formed back to a separated audio track. For training, two videos are combined and their mixture is used to train the model and as an output, the two videos' audios are separated from the mixture. As for evaluation on duet audio, the input is a video with two instruments playing and the output is each instrument track separately. 
 
-### Training Output 
+### Training Output
 
-Example training sample output: 
+Example training sample output:
+
+Input audio mixzture spectogram:
+
+![InputSpec](https://user-images.githubusercontent.com/66205961/217004727-c2b5171b-7703-4bfd-a98f-e006d14e86ec.png)
 
 Instrument 1 Frame: 
 
