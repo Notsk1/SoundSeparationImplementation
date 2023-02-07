@@ -37,7 +37,7 @@ Model outputs two spectrograms that can be formed back to a separated audio trac
 
 Example training sample output:
 
-Input audio mixzture spectogram:
+Input audio mixture spectogram:
 
 ![InputSpec](https://user-images.githubusercontent.com/66205961/217004727-c2b5171b-7703-4bfd-a98f-e006d14e86ec.png)
 
