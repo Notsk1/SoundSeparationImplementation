@@ -16,6 +16,7 @@ class UNet(nn.Module):
     """
     Define a class for UNet module used to process the audio
     """
+
     def __init__(self, n_channels, n_classes, bilinear=True):
         """
         Initialize network before traning
@@ -36,21 +37,19 @@ class UNet(nn.Module):
         self.down2 = Down(64*2, 64*4)
         self.down3 = Down(64*4, 64*8)
         self.down4 = Down(64*8, 64*8)
-        self.down5 = Down(64*8, 64*8) 
+        self.down5 = Down(64*8, 64*8)
         self.down6 = Down(64*8, 64*4, inner=True)
 
         # Initialize the decoder
         #self.upFrame = Up(21, 64*4, inner=True)
-        self.up1 = Up(64*4, 64*8, inner = True, bilinear=self.bilinear)
+        self.up1 = Up(64*4, 64*8, inner=True, bilinear=self.bilinear)
         self.up111 = Up(64*8, 64*8, bilinear=self.bilinear)
         self.up11 = Up(64*8, 64*8, bilinear=self.bilinear)
         self.up21 = Up(64*8, 64*4, bilinear=self.bilinear)
         self.up31 = Up(64*4, 64*2, bilinear=self.bilinear)
         self.up41 = Up(64*2, 64, bilinear=self.bilinear)
         self.outc1 = OutConv(64, n_classes, bilinear=self.bilinear)
-        
-        
-    
+
     def forward(self, x):
         """
         Forward pass of the network
@@ -83,14 +82,14 @@ class UNet(nn.Module):
         x = self.up31(x, x2)
         x = self.up41(x, x1)
         outputs = self.outc1(x)
-         
+
         return outputs
 
 
 class Down(nn.Module):
     """Convolution with stride to make featuremap dimensions smaller"""
 
-    def __init__(self, in_channels, out_channels, inner = False):
+    def __init__(self, in_channels, out_channels, inner=False):
         """
         Initialize module before training
 
@@ -100,18 +99,20 @@ class Down(nn.Module):
         inner: Define if the module is used as the last down convolution layer
         """
         super().__init__()
-        downrelu = nn.LeakyReLU(0.2, False) #inplace True
+        downrelu = nn.LeakyReLU(0.2, False)  # inplace True
         downnorm = nn.BatchNorm2d(out_channels)
         self.conv = nn.Sequential(
             downrelu,
-            nn.Conv2d(in_channels, out_channels, kernel_size=4, stride = 2, padding=1, bias=False),
+            nn.Conv2d(in_channels, out_channels, kernel_size=4,
+                      stride=2, padding=1, bias=False),
             downnorm
         )
         if inner:
             self.conv = nn.Sequential(
-            downrelu,
-            nn.Conv2d(in_channels, out_channels, kernel_size=4, stride = 2, padding=1, bias=False)
-        )
+                downrelu,
+                nn.Conv2d(in_channels, out_channels, kernel_size=4,
+                          stride=2, padding=1, bias=False)
+            )
 
     def forward(self, x):
         """
@@ -129,7 +130,7 @@ class Down(nn.Module):
 class Up(nn.Module):
     """Upsample then convolution"""
 
-    def __init__(self, in_channels, out_channels, inner = False, bilinear=True):
+    def __init__(self, in_channels, out_channels, inner=False, bilinear=True):
         """
         Initialize module before training
 
@@ -157,9 +158,11 @@ class Up(nn.Module):
         self.conv = nn.Sequential(
             uprelu,
             upsample,
-            nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1, bias=False),
+            nn.Conv2d(in_channels, out_channels,
+                      kernel_size=3, padding=1, bias=False),
             upnorm
         )
+
     def forward(self, x1, x2):
         """
         Forward pass of the module. Concatinates the output of the corresponding
@@ -178,6 +181,7 @@ class Up(nn.Module):
 
 class OutConv(nn.Module):
     """Upsample then convolution without batchnormalization"""
+
     def __init__(self, in_channels, out_channels, bilinear=True):
         """
         Initialize module before training
@@ -213,8 +217,10 @@ class OutConv(nn.Module):
         """
         return self.conv(x)
 
+
 class InConv(nn.Module):
     """Convolution layer to the original input"""
+
     def __init__(self, in_channels, out_channels):
         """
         Initialize module before training
@@ -224,7 +230,8 @@ class InConv(nn.Module):
         n_classes: Number of output channels
         """
         super(InConv, self).__init__()
-        self.conv = nn.Conv2d(in_channels, out_channels, kernel_size=4,stride=2, padding=1, bias=False)
+        self.conv = nn.Conv2d(in_channels, out_channels,
+                              kernel_size=4, stride=2, padding=1, bias=False)
 
     def forward(self, x):
         """

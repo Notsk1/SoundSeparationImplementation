@@ -10,11 +10,13 @@ import torchvision
 import torch.nn as nn
 from .audio_net import UNet
 
+
 class ModelBuilder():
     """
     Create networks for traning
     """
-    def buildFrame(self, preTrained = True):
+
+    def buildFrame(self, preTrained=True):
         """
         Load frame network from torchvision models
 
@@ -25,14 +27,14 @@ class ModelBuilder():
         resnet: Resnet model based frame network
         """
         resnet = torchvision.models.resnet18(preTrained)
-        
+
         num_ftrs = resnet.fc.in_features
- 
+
         resnet.fc = nn.Linear(num_ftrs, 21)
-        
+
         return resnet
-    
-    def buildAudio(self, n_channels, n_classes, bilinear = True):
+
+    def buildAudio(self, n_channels, n_classes, bilinear=True):
         """
         Build audio network
 

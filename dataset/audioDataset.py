@@ -22,25 +22,25 @@ from random import randint
 
 
 class AudioDataset(torchdata.Dataset):
-    def __init__(self, csvFile, args, setType = 'train'):
+    def __init__(self, csvFile, args, setType='train'):
         super().__init__()
         self.setType = setType
         self.dataList = []
-        self.classes = ['accordion','acoustic_guitar','bagpipe','banjo','bassoon','cello','clarinet','congas','drum','electric_bass',
-                        'erhu','flute','guzheng','piano','pipa','saxophone','trumpet','tuba','ukulele','violin','xylophone']
-        
+        self.classes = ['accordion', 'acoustic_guitar', 'bagpipe', 'banjo', 'bassoon', 'cello', 'clarinet', 'congas', 'drum', 'electric_bass',
+                        'erhu', 'flute', 'guzheng', 'piano', 'pipa', 'saxophone', 'trumpet', 'tuba', 'ukulele', 'violin', 'xylophone']
+
         # Waveform specs
         self.audLen = args['audLen']
         self.audRate = args['audRate']
         self.audSec = 1. * self.audLen/self.audRate
-        
+
         # STFT specs
         self.stftLength = args['stftLength']
         self.stftHop = args['stftHop']
 
         # Frame specs
         self.fps = args['FPS']
-        self.imgSize = (500,500)
+        self.imgSize = (500, 500)
 
         classFiles = {}
         classAmount = {}
@@ -52,7 +52,8 @@ class AudioDataset(torchdata.Dataset):
             if setCutOff > 10:
                 break
 
-            self.dataList.append(row) # [0] audio path, [1] frame path, [2] number of frames
+            # [0] audio path, [1] frame path, [2] number of frames
+            self.dataList.append(row)
 
             if self.setType == 'train':
                 label = os.path.normpath(row[0]).split(os.sep)[3]
@@ -63,14 +64,14 @@ class AudioDataset(torchdata.Dataset):
                     classAmount[label] = classAmount[label] + 1
                     classFiles[label].append(row)
             setCutOff += 1
-        
+
         # Add more samples to instruments that are less represented
         if self.setType == 'train':
-            classMax = classAmount[max(classAmount, key = classAmount.get)]
+            classMax = classAmount[max(classAmount, key=classAmount.get)]
             for key, value in classAmount.items():
                 maxIdx = value
                 while value < classMax:
-                    randPath = classFiles[key][randint(0,maxIdx-1)]
+                    randPath = classFiles[key][randint(0, maxIdx-1)]
                     self.dataList.append(randPath)
                     value += 1
 
@@ -82,7 +83,8 @@ class AudioDataset(torchdata.Dataset):
         return len(self.dataList)
 
     def __getitem__(self, idx):
-        ampMix, inputAmp, inputPhase, labels, centers, idxs = self._getaudio_(idx)
+        ampMix, inputAmp, inputPhase, labels, centers, idxs = self._getaudio_(
+            idx)
         images = []
         for i in range(len(centers)):
             image = self._getframe_(idxs[i], centers[i])
@@ -101,7 +103,7 @@ class AudioDataset(torchdata.Dataset):
         imagePath = path + '\{}.jpg'.format(str(frameIdx).zfill(6))
         image = Image.open(imagePath).convert('RGB')
 
-        image = image.resize((300,300))
+        image = image.resize((300, 300))
 
         return np.array(image)
 
@@ -114,7 +116,7 @@ class AudioDataset(torchdata.Dataset):
         labels.append(self.classes.index(label))
 
         # Get random amount of music to add to each input
-        rint = 1 
+        rint = 1
 
         # Define center list for frame retrieval
         centers = []
@@ -122,7 +124,7 @@ class AudioDataset(torchdata.Dataset):
         idxs.append(idx)
 
         # Load original audio and process it
-        inputAudio, rate = librosa.load(path, sr=None, mono=True) 
+        inputAudio, rate = librosa.load(path, sr=None, mono=True)
         inputAudio_proc, center = self._processAudio_(inputAudio)
 
         amp, phase = self._stft_(inputAudio_proc)
@@ -131,10 +133,10 @@ class AudioDataset(torchdata.Dataset):
 
         # Define amplitude mix
         tupleSize = tuple(amp.size())
-        size = (21 ,tupleSize[0] ,tupleSize[1]) # +1 for the actual audio
+        size = (21, tupleSize[0], tupleSize[1])  # +1 for the actual audio
         ampMix = torch.zeros(size)
-        ampMix[self.classes.index(label),:,:] = amp
-        
+        ampMix[self.classes.index(label), :, :] = amp
+
         # Use each one of the spectrograms magnitude information
         # so that every channel of the U-net outputs one instrument (adds up to 21 channels)
         i = 0
@@ -158,7 +160,7 @@ class AudioDataset(torchdata.Dataset):
 
                 amp, phase = self._stft_(audio_proc)
 
-                ampMix[self.classes.index(sampleLabel),:,:] = amp
+                ampMix[self.classes.index(sampleLabel), :, :] = amp
 
                 # Limit to one instance of the same instrument per audiomix
                 usedLabels.append(sampleLabel)
@@ -167,10 +169,10 @@ class AudioDataset(torchdata.Dataset):
             i += 1
 
         inputAmp, inputPhase = self._stft_(inputAudio_proc)
-        inputAmp = inputAmp[None,...]
+        inputAmp = inputAmp[None, ...]
 
         return ampMix, inputAmp, inputPhase, labels, centers, idxs
-    
+
     def _stft_(self, audio):
         spec = librosa.stft(
             audio, n_fft=self.stftLength, hop_length=self.stftHop)
@@ -178,12 +180,12 @@ class AudioDataset(torchdata.Dataset):
         phase = np.angle(spec)
         return torch.from_numpy(amp), torch.from_numpy(phase)
 
-    def _processAudio_(self, audio_raw, time = 0):
+    def _processAudio_(self, audio_raw, time=0):
 
         if audio_raw.shape[0] < self.audRate * self.audSec:
             n = int(self.audRate * self.audSec / audio_raw.shape[0]) + 1
             audio_raw = np.tile(audio_raw, n)
-        
+
         len_raw = audio_raw.shape[0]
 
         if time == 0:
@@ -191,10 +193,9 @@ class AudioDataset(torchdata.Dataset):
             center = randint(self.audLen + 1, audio_raw.shape[0]-self.audLen)
         else:
             center = int(time * self.audRate)
-        
+
         # crop N seconds
         start = max(0, center - self.audLen // 2)
         end = min(len_raw, center + self.audLen // 2)
         audio = audio_raw[start:end]
         return audio, center
-        
