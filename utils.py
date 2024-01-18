@@ -3,7 +3,7 @@
 This file contains helper function that help the execution of the main
 system.
 
-Last modified May 2022
+Last modified October 2023
 Author Petteri Nuotiomaa
 ------------------------------------------------------------------------
 """
@@ -80,7 +80,7 @@ def postProcessAudio(outputAmps, groundTruth, device, lossFunc, prob):
     return output.to(device), groundTruths.to(device)
 
 
-def form_audio(inputAmps, inputPhase, groundTruth, outputs, labels, args, ampMix):
+def form_audio(inputAmps, inputPhase, groundTruth, outputs, labels, args, ampMix, audio_confusion = None):
     """Forms the input, output and ground truth audios"""
     # Detach tensors, move them to the cpu and change them to numpy arrays
     inputAmps = inputAmps[0].detach().cpu().numpy()
@@ -103,9 +103,9 @@ def form_audio(inputAmps, inputPhase, groundTruth, outputs, labels, args, ampMix
         elif args['lossFunc'] == 'cross':
             if args['crossProb']:
                 groundTruth1 = (
-                    groundTruth[labels[0][0].item()] > 0.1).astype(int)
+                    groundTruth[labels[0][0].item()] > args['gt_threshold']).astype(int)
                 groundTruth2 = (
-                    groundTruth[labels[0][1].item()] > 0.1).astype(int)
+                    groundTruth[labels[0][1].item()] > args['gt_threshold']).astype(int)
             else:
                 groundTruth1 = (groundTruth == labels[0][0].item()).astype(int)
                 groundTruth2 = (groundTruth == labels[0][1].item()).astype(int)
@@ -125,6 +125,14 @@ def form_audio(inputAmps, inputPhase, groundTruth, outputs, labels, args, ampMix
 
         unique, counts = np.unique(semanticMask, return_counts=True)
         result = np.column_stack((unique, counts))
+        if audio_confusion is not None:
+            audio_confusion = create_confusion_audio(result, audio_confusion, labels)
+        dice_1 = dice((groundTruth[labels[0][0].item()] > args['gt_threshold']).astype(int),(semanticMask == classNumber1).astype(int))
+        dice_2 = dice((groundTruth[labels[0][1].item()] > args['gt_threshold']).astype(int),(semanticMask == classNumber2).astype(int))
+        dice_avg = (dice_1+dice_2)/2
+        iou_1 = iou_mask((groundTruth[labels[0][0].item()] > args['gt_threshold']).astype(int), (semanticMask == classNumber1).astype(int))
+        iou_2 = iou_mask((groundTruth[labels[0][1].item()] > args['gt_threshold']).astype(int), (semanticMask == classNumber2).astype(int))
+        iou_avg = (iou_1+iou_2)/2
         print(result)
 
         '''
@@ -159,14 +167,14 @@ def form_audio(inputAmps, inputPhase, groundTruth, outputs, labels, args, ampMix
         groundTruthAudio2[0], hop_length=args['stftHop'], window='hann')
 
     outputAudio1 = lb.istft(
-        outputAudio1[0], hop_length=args['stftHop'], window='hann')
+        outputAudio1[0], hop_length=args['stftHop'], window='hann', length=args['audLen'])
     outputAudio2 = lb.istft(
-        outputAudio2[0], hop_length=args['stftHop'], window='hann')
+        outputAudio2[0], hop_length=args['stftHop'], window='hann', length=args['audLen'])
 
     groundTruthAudios = [groundTruthAudio1, groundTruthAudio2]
     outputAudios = [outputAudio1, outputAudio2]
 
-    return inputAudio, np.array(groundTruthAudios), np.array(outputAudios), semanticMask
+    return inputAudio, np.array(groundTruthAudios), np.array(outputAudios), semanticMask, audio_confusion, dice_avg, iou_avg
 
 
 def warpgrid(bs, HO, WO, warp=True):
@@ -194,3 +202,85 @@ def makedirs(path, remove=False):
         else:
             return
     os.makedirs(path)
+
+
+def create_confusion_audio(unique_results, audio_confusion, labels):
+    """
+    Create a confusion matrix for audio using
+
+    Arguments:
+    - unique_results: Number of appearances per label
+    - audio_confusion: Audio confusion matrix
+    - labels: Ground truth labels
+    """
+
+    # Check which instruments have the majority, if no two majority instrument -> confusion for background
+    maximum_arg = np.argsort((-unique_results[:,1]))
+    if len(maximum_arg) == 1:
+        audio_confusion[labels[0, 0], 21] += 1
+        audio_confusion[labels[0, 1], 21] += 1
+    elif len(maximum_arg) == 2:
+        top_2 = unique_results[:,0]
+        not_one = True
+        not_two = True
+        if labels[0,0] in top_2:
+            audio_confusion[labels[0, 0], labels[0, 0]] += 1
+            not_one = False
+        if labels[0,1] in top_2:
+            audio_confusion[labels[0, 1], labels[0, 1]] += 1
+            not_two = False
+        if not_one and not_two:
+            audio_confusion[labels[0, 0], top_2[1]] += 1
+            audio_confusion[labels[0, 1], top_2[1]] += 1
+        else:
+            if not_one:
+                audio_confusion[labels[0, 0], 21] += 1
+            if not_two:
+                audio_confusion[labels[0, 1], 21] += 1
+    else:
+        top_3 = unique_results[maximum_arg[:3],0]
+        print("top 3  ", top_3)
+        print("labels", labels[0,:])
+        if labels[0,0] in top_3:
+            audio_confusion[labels[0, 0], labels[0, 0]] += 1
+        else:
+            for top in top_3:
+                if top != 21 and top != labels[0,1]:
+                    audio_confusion[labels[0, 0], top] += 1
+                    break
+        if labels[0,1] in top_3:
+            audio_confusion[labels[0, 1], labels[0, 1]] += 1
+        else:
+            for top in top_3:
+                if top != 21 and top != labels[0,0]:
+                    audio_confusion[labels[0, 1], top] += 1
+                    break
+
+    return audio_confusion
+
+
+def dice(mask1, mask2):
+    mask1 = np.asarray(mask1).astype(np.bool)
+    mask2 = np.asarray(mask2).astype(np.bool)
+
+    if mask1.shape != mask2.shape:
+        raise ValueError("Shape mismatch: mask1 and mask2 must have the same shape.")
+
+    # Compute Dice coefficient
+    intersection = np.logical_and(mask1, mask2)
+
+    dice_score = 2. * intersection.sum() / (mask1.sum() + mask2.sum())
+    if np.isnan(dice_score):
+        dice_score = 0
+
+    return dice_score
+
+def iou_mask(mask1, mask2):
+    mask1_area = np.count_nonzero(mask1 == 1)
+    mask2_area = np.count_nonzero(mask2 == 1)
+    intersection = np.count_nonzero(np.logical_and( mask1, mask2))
+    try:
+        iou = intersection/(mask1_area+mask2_area-intersection)
+    except ZeroDivisionError:
+        iou = 0
+    return iou

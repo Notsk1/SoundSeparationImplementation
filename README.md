@@ -1,7 +1,5 @@
 # Multi Modal Sound Source Separation 
 
-NOTE: Work in Progress. Some of the instructions and descriptions of the code in this readme can be outdated. 
-
 This repository contains a machine learning model used for sound source separation. Model uses Visual and audio features to separate different audio sources from single duet video. Model has similar structure to the model introduced in paper https://arxiv.org/pdf/1804.03160.pdf.  
 
 This project was done as a part of a bachelor's thesis which studies the modern approach for sound source separation. 
@@ -21,17 +19,17 @@ https://github.com/roudimit/MUSIC_dataset.
 
 Clone the repository to your local computer and then set up desired settings from arguments.py.  
 
-### Training the model 
+### Training the networks 
 
-Before training the model, data needs to be stored and the path to data defined. Train the model with command "python main.py" and setting "trainCombared" has to be True. If only visual network training desired, "trainCombared" must be False and "trainFrame" must be True. 
+Before training the networks, data needs to be stored and the path to data defined. Train the audio model with command "python main.py" and setting "trainAudio" has to be True. If only visual network training desired, "trainAudio" must be False and "trainFrame" must be True. 
 
 ### Evaluating the model 
 
-After the model has been trained, you can evaluate the model with setting "evalCombined" being True and then running the main script. To evaluate the performance on duet videos, run script with setting "evalDuet" being True. 
+After the networks has been trained, you can evaluate the model with setting "evalCombined" being True and then running the main script. To evaluate the performance on duet videos, run script with setting "evalDuet" being True. 
 
 ## Model Output 
 
-Model outputs two spectrograms that can be formed back to a separated audio track. For training, two videos are combined and their mixture is used to train the model and as an output, the two videos' audios are separated from the mixture. As for evaluation on duet audio, the input is a video with two instruments playing and the output is each instrument track separately. 
+Model outputs two spectrograms that can be formed back to a separated audio track. For training, two videos are combined and their mixture is used to train the model and as an output, the two videos' audios are separated from the mixture. As for using the model on duet audio, the input is a video with two instruments playing and the output is each instrument track separately. 
 
 ### Training Output
 
@@ -66,6 +64,7 @@ Instrument 2 Predicted Audio Spectrogram:
 ![outputMask1](https://user-images.githubusercontent.com/66205961/216768848-7909e83e-5aab-450a-b251-3f9f55be0ad7.png) 
 
 ### Duet Output 
+
 
 ## Authors 
 

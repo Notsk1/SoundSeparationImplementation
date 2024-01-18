@@ -3,7 +3,7 @@
 Main file for the Sound Source Semantic Segmentation project
 Run this file on your python environment with necessary libraries installed
 
-Last modified February 2023
+Last modified September 2023
 Author Petteri Nuotiomaa
 ------------------------------------------------------------------------
 """
@@ -41,6 +41,7 @@ def evaluate_audio(net_audio, loader, epoch, args, crit, device, path):
 
     # Turn off gradient calculation for better performance and to make sure system doesn't learn during eval
     torch.set_grad_enabled(False)
+    net_audio.eval()
 
     size = 0
     average_loss = 0
@@ -104,22 +105,40 @@ def evaluate_audio(net_audio, loader, epoch, args, crit, device, path):
         outputs = sigmoid(outputs)
 
         # Reform input audio, GT audio and output audio
-        input_audio, ground_truth_audios, output_audios, semantic_mask = form_audio(
+        input_audio, ground_truth_audios, output_audios, semantic_mask, audio_confusion, dice, iou = form_audio(
             input_amp, input_phase, ground_truth, outputs, labels, args, amp_mix)
 
         # Semantic mask plot
         plt.figure()
-
+        #colormap = colors.Colormap("jotain", 22)
         cmap = colors.ListedColormap(['darkorange', 'mediumblue', 'paleturquoise', 'darkred', 'antiquewhite', 'palegreen', 'magenta', 'midnightblue', 'chocolate', 'peru', 'forestgreen',
                                       'rebeccapurple', 'lime', 'lightsteelblue', 'lightseagreen', 'mediumvioletred', 'red', 'indianred', 'limegreen', 'lightgreen', 'cornflowerblue', 'white'])
+        #print(ground_truth.detach().cpu().numpy()[0,:,:].squeeze())
         heat = plt.pcolor(semantic_mask, vmin=0, vmax=22, cmap=cmap)
         cbar = plt.colorbar(heat, ticks=[0.5, 1.5, 2.5, 3.5, 4.5, 5.5, 6.5, 7.5, 8.5,
                             9.5, 10.5, 11.5, 12.5, 13.5, 14.5, 15.5, 16.5, 17.5, 18.5, 19.5, 20.5, 21.5])
         cbar.ax.set_yticklabels(['accordion', 'acoustic_guitar', 'bagpipe', 'banjo', 'bassoon', 'cello', 'clarinet', 'congas', 'drum', 'electric_bass',
                                  'erhu', 'flute', 'guzheng', 'piano', 'pipa', 'saxophone', 'trumpet', 'tuba', 'ukulele', 'violin', 'xylophone', 'background'])
         ax = plt.gca()
+        # Calculate the tick positions and labels for the y-axis
+        num_ticks = 10  # You can adjust this to control the number of ticks
+        tick_positions = np.linspace(0, 512, num_ticks)
+        tick_labels = np.linspace(0, 5012.5, num_ticks)
+
+        # Set custom tick positions and labels for the y-axis
+        ax.set_yticks(tick_positions)
+        ax.set_yticklabels([f'{int(label)}' for label in tick_labels])
+
+        num_ticks = 5  # You can adjust this to control the number of ticks
+        tick_positions = np.linspace(0, 256, num_ticks)
+        tick_labels = np.linspace(0, 5, num_ticks)
+
+        # Set custom tick positions and labels for the y-axis
+        ax.set_xticks(tick_positions)
+        ax.set_xticklabels([f'{int(label)}' for label in tick_labels])
+
         ax.set_ylim(ax.get_ylim()[::-1])
-        plt.savefig("gt2.png")
+        plt.savefig("semanticMaskPrediction.png")
         plt.close()
 
         # Calculate metrics
@@ -192,6 +211,8 @@ def evaluate_combined(nets, loader, epoch, args, crit, device, path):
     size = 0
     average_loss = 0
     (net_frame, net_audio) = nets
+    net_frame.eval()
+    net_audio.eval()
 
     # Init HTML for visualization
     visualizer = HTMLVisualizer(os.path.join(path, 'index.html'))
@@ -217,9 +238,14 @@ def evaluate_combined(nets, loader, epoch, args, crit, device, path):
     # Sigmoid layer for output activation
     sigmoid = nn.Sigmoid()
 
+    confMatrix = np.zeros((21, 21))
+    count_frame = np.zeros((21, 1))
+    audio_confusion = np.zeros((22, 22))
+    total_dice = 0
+    total_iou = 0
     for i, data in enumerate(loader, 0):
-        amp_mix, input_amp, input_phase, labels, frames, images = data[0].to(device), data[1].to(
-            device), data[2].to(device), data[3].to(device), data[4].to(device), data[5]
+        amp_mix, input_amp, input_phase, labels, frames, images, full_audios, inputAudio_proc = data[0].to(device), data[1].to(
+            device), data[2].to(device), data[3].to(device), data[4].to(device), data[5], data[6], data[7]
         '''
         amp_mix = [batchSize, 21, 512, 256] Per instrument audios
         input_amp =  [batchSize, 512, 256] The magnitude of all audio sources combined
@@ -252,11 +278,6 @@ def evaluate_combined(nets, loader, epoch, args, crit, device, path):
 
         frame_features = torch.maximum(frame_weights1, frame_weights2)
 
-        # Calculate the frame network accuracy from the first frame
-        outputLabel = torch.argmax(frame_feature1, dim=1)
-        print(labels[:, 0], "  ", outputLabel)
-        total_right_classes += (labels[:, 0] == outputLabel).sum()
-
         # Calculate the outputs given the input audio mix and frame predictions
         if args['log']:
             # Add small number as you can't calculate log for 0 value
@@ -281,41 +302,69 @@ def evaluate_combined(nets, loader, epoch, args, crit, device, path):
         plt.savefig("gt2.png")
         plt.close()
         
-        '''
-        # Combine frame probabilities with the audio network output
-        outputs = torch.mul(outputs, frame_features)
-
+        '''        
+        # Activation with sigmoid
+        outputs = sigmoid(outputs)
+        
         # Reshape into the original size
         outputs, ground_truth = postProcessAudio(
             outputs, ground_truth, device, args['lossFunc'], args['crossProb'])
 
-        # Activation with sigmoid
-        outputs = sigmoid(outputs)
+        # Combine frame probabilities with the audio network output
+        frame_features = torch.div(frame_features, torch.max(frame_features))
+        #outputs = torch.mul(outputs, frame_features)
 
         # Reform input audio, GT audio and output audio
-        input_audio, ground_truth_audios, output_audios, semantic_mask = form_audio(
-            input_amp, input_phase, ground_truth, outputs, labels, args, amp_mix)
+        input_audio, ground_truth_audios, output_audios, semantic_mask, audio_confusion, dice, iou = form_audio(
+            input_amp, input_phase, ground_truth, outputs, labels, args, amp_mix, audio_confusion)
 
+        total_dice += dice
+        total_iou += iou
         # Semantic mask plot
         plt.figure()
         #colormap = colors.Colormap("jotain", 22)
         cmap = colors.ListedColormap(['darkorange', 'mediumblue', 'paleturquoise', 'darkred', 'antiquewhite', 'palegreen', 'magenta', 'midnightblue', 'chocolate', 'peru', 'forestgreen',
                                       'rebeccapurple', 'lime', 'lightsteelblue', 'lightseagreen', 'mediumvioletred', 'red', 'indianred', 'limegreen', 'lightgreen', 'cornflowerblue', 'white'])
+        #print(ground_truth.detach().cpu().numpy()[0,:,:].squeeze())
         heat = plt.pcolor(semantic_mask, vmin=0, vmax=22, cmap=cmap)
         cbar = plt.colorbar(heat, ticks=[0.5, 1.5, 2.5, 3.5, 4.5, 5.5, 6.5, 7.5, 8.5,
                             9.5, 10.5, 11.5, 12.5, 13.5, 14.5, 15.5, 16.5, 17.5, 18.5, 19.5, 20.5, 21.5])
         cbar.ax.set_yticklabels(['accordion', 'acoustic_guitar', 'bagpipe', 'banjo', 'bassoon', 'cello', 'clarinet', 'congas', 'drum', 'electric_bass',
                                  'erhu', 'flute', 'guzheng', 'piano', 'pipa', 'saxophone', 'trumpet', 'tuba', 'ukulele', 'violin', 'xylophone', 'background'])
         ax = plt.gca()
+        # Calculate the tick positions and labels for the y-axis
+        num_ticks = 10  # You can adjust this to control the number of ticks
+        tick_positions = np.linspace(0, 512, num_ticks)
+        tick_labels = np.linspace(0, 5012.5, num_ticks)
+
+        # Set custom tick positions and labels for the y-axis
+        ax.set_yticks(tick_positions)
+        ax.set_yticklabels([f'{int(label)}' for label in tick_labels])
+
+        num_ticks = 5  # You can adjust this to control the number of ticks
+        tick_positions = np.linspace(0, 256, num_ticks)
+        tick_labels = np.linspace(0, 5, num_ticks)
+
+        # Set custom tick positions and labels for the y-axis
+        ax.set_xticks(tick_positions)
+        ax.set_xticklabels([f'{int(label)}' for label in tick_labels])
+
         ax.set_ylim(ax.get_ylim()[::-1])
-        plt.savefig("gt2.png")
+        plt.savefig("semanticMaskPrediction.png")
         plt.close()
+
+        full_audios = np.array(full_audios[0, :,:]).astype(np.float32)
+        #print("full audio shape", full_audios.shape)
+        #print("GT audio shape", ground_truth_audios.shape)
+        #print("output audio shape", output_audios.shape)
+
+
 
         # Calculate metrics
         sdr, sir, sar, perms = 0, 0, 0, 0
         try:
             sdr, sir, sar, perms = bss_eval_sources(
-                ground_truth_audios+0.0001, output_audios+0.0001)
+                full_audios+0.0001, output_audios+0.0001)#full_audios+0.0001)#np.vstack((inputAudio_proc[0],inputAudio_proc[0]))+0.0001)#output_audios+0.0001)
         except:
             print('null audio')
 
@@ -328,17 +377,10 @@ def evaluate_combined(nets, loader, epoch, args, crit, device, path):
         ground_truth = torch.Tensor.cpu(ground_truth[0])
         input_amps = torch.Tensor.cpu(input_amp)
 
-        class_number = [labels[0][0].item(), labels[0][1].item()]
-
-        # TODO: Change to get more meaningful results
-        semantic_mask = torch.argmax(outputs, 0)
-        count = torch.sum((semantic_mask == (class_number[0] or class_number[1])))
-        average_correct_label += (count/(outputs[0].nelement())).item()
-
         # Save the audios and images
         file_path = "/{}".format(i)
         output_visuals(vis_rows, input_amps, outputs, ground_truth, labels, input_audio,
-                       ground_truth_audios, output_audios, path, file_path, images[0], args)
+                       full_audios, output_audios, path, file_path, images[0], args)
 
         # Handle and save metrics
         metrics = ""
@@ -360,15 +402,71 @@ def evaluate_combined(nets, loader, epoch, args, crit, device, path):
         #metrics += str(outputLabel)
         vis_rows.append([{'text': metrics}])
 
+        # Image metrics:
+        # Calculate the frame network accuracy and confusion matrix
+        outputLabels = torch.argsort(frame_features, dim=1, descending=True)
+        for i in range(args['batch_size_gpu']):
+            for j in range(2):
+                if labels[i, j] == outputLabels[i,0]:
+                    total_right_classes += 1
+                    confMatrix[labels[i, j], outputLabels[i,0]] += 1
+                elif labels[i, j] == outputLabels[i,1]:
+                    total_right_classes += 1
+                    confMatrix[labels[i, j], outputLabels[i,1]] += 1
+                else:
+                    confMatrix[labels[i, j], outputLabels[i,j]] += 1
+                count_frame[labels[i, j]] += 1
+
     visualizer.add_rows(vis_rows)
     visualizer.write_html()
 
+    # Form and save the confusion matrix
+    confMatrix = np.divide(confMatrix,count_frame, out=np.zeros_like(confMatrix),where=count_frame!=0)
+    fig, ax = plt.subplots(figsize=(10, 10))
+    ax.matshow(confMatrix, cmap=plt.cm.Blues, alpha=1)
+    for i in range(confMatrix.shape[0]):
+        for j in range(confMatrix.shape[1]):
+            num = "{:.2f}".format(confMatrix[i, j])
+            ax.text(x=j, y=i, s=num, va='center', ha='center', size='x-small')
+
+    plt.xlabel('Predictions', fontsize=18)
+    plt.ylabel('Actuals', fontsize=18)
+    tick_positions = np.arange(21)
+    ax.set_yticks(tick_positions)
+    ax.set_yticklabels(['accordion', 'acoustic_guitar', 'bagpipe', 'banjo', 'bassoon', 'cello', 'clarinet', 'congas', 'drum', 'electric_bass',
+                                 'erhu', 'flute', 'guzheng', 'piano', 'pipa', 'saxophone', 'trumpet', 'tuba', 'ukulele', 'violin', 'xylophone'])
+    plt.title('Confusion Matrix Image', fontsize=18)
+    plt.savefig("confusion_image.png")
+    plt.close()
+
+    # Form and save the confusion matrix
+    count_frame = np.append(count_frame, np.zeros((1,1)), 0)
+    confMatrix = np.divide(audio_confusion,count_frame, out=np.zeros_like(audio_confusion),where=count_frame!=0)
+    fig, ax = plt.subplots(figsize=(10, 10))
+    ax.matshow(confMatrix, cmap=plt.cm.Blues, alpha=1)
+    for i in range(confMatrix.shape[0]):
+        for j in range(confMatrix.shape[1]):
+            num = "{:.2f}".format(confMatrix[i, j])
+            ax.text(x=j, y=i, s=num, va='center', ha='center', size='x-small')
+
+    plt.xlabel('Predictions', fontsize=18)
+    plt.ylabel('Actuals', fontsize=18)
+    tick_positions = np.arange(22)
+    ax.set_yticks(tick_positions)
+    ax.set_yticklabels(['accordion', 'acoustic_guitar', 'bagpipe', 'banjo', 'bassoon', 'cello', 'clarinet', 'congas', 'drum', 'electric_bass',
+                                 'erhu', 'flute', 'guzheng', 'piano', 'pipa', 'saxophone', 'trumpet', 'tuba', 'ukulele', 'violin', 'xylophone', 'background'])
+    plt.title('Confusion Matrix Audio', fontsize=18)
+    plt.savefig("confusion_audio.png")
+    plt.close()
+
     sdrs = np.array(sdrs)
-    print("Frame accuracy: ", str(total_right_classes/size))
+    print("Frame accuracy: ", str(total_right_classes/(size*2)))
     print('Average SDR: ', str(average_sdr/(size/args['batch_size_gpu'])))
     print("Median SDR: ", str(np.median(sdrs)))
-    print("Average correct label: ", str(average_correct_label/size))
-    return (average_loss/size), (average_sdr/(size/args['batch_size_gpu'])), (average_sir/(size/args['batch_size_gpu'])), (average_sar/(size/args['batch_size_gpu']))
+    print("Dice: ", str(total_dice/(size*2)))
+    print("IOU: ", str(total_iou/(size*2)))
+    return (average_loss/size), (average_sdr/(size/args['batch_size_gpu'])), (average_sir/(size/args['batch_size_gpu'])), (average_sar/(size/args['batch_size_gpu'])),\
+        total_dice/(size*2), total_iou/(size*2), total_right_classes/(size*2)
 
 
 def evaluate_duet(nets, loader, epoch, args, crit, device, path):
@@ -377,6 +475,8 @@ def evaluate_duet(nets, loader, epoch, args, crit, device, path):
 
     torch.set_grad_enabled(False)
     (net_frame, net_audio) = nets
+    net_frame.eval()
+    net_audio.eval()
 
     # Init HTML for visualization
     visualizer = HTMLVisualizer(os.path.join(path, 'index.html'))
@@ -416,13 +516,18 @@ def evaluate_duet(nets, loader, epoch, args, crit, device, path):
             frame_weights = sigmoid(frame_feature)
             frame_weights = frame_weights.reshape(
                 (args['batch_size_gpu'], 21, 1, 1))
+            frame_weights = torch.div(frame_weights, torch.max(frame_weights))
 
 
         # Calculate the outputs given the input audio mix and the interpolated frame weights
         if args['log']:
             input = torch.log(input+0.0001)
 
+        
         outputs = net_audio(input).to(device)
+
+        # Activation with sigmoid
+        outputs = sigmoid(outputs)
 
         if not args['evalDuetAudioOnly']:
             # Combine frame probabilities with the audio network output
@@ -436,9 +541,6 @@ def evaluate_duet(nets, loader, epoch, args, crit, device, path):
         for n in range(21):
             output[:, n:n+1, :,
                    :] = F.grid_sample(outputs[:, n:n+1, :, :], grid_warp)
-
-        # Activation with sigmoid
-        output = sigmoid(output)
 
         # Reform input audio, GT audio and output audio
         input_amps = input_amp[0].detach().cpu().numpy()
@@ -510,6 +612,7 @@ def evaluate_img(net, loader, epoch, args, crit, device):
     print('Evaluating at {} epochs...'.format(epoch))
     # Turn off gradient calculation for better performance and to make sure system dosen't learn durin eval
     torch.set_grad_enabled(False)
+    net.eval()
 
     # Init variables for different metric calculations
     total_right_classes = 0
@@ -553,7 +656,11 @@ def evaluate_img(net, loader, epoch, args, crit, device):
 
     plt.xlabel('Predictions', fontsize=18)
     plt.ylabel('Actuals', fontsize=18)
-    plt.title('Confusion Matrix', fontsize=18)
+    tick_positions = np.arange(21)
+    ax.set_yticks(tick_positions)
+    ax.set_yticklabels(['accordion', 'acoustic_guitar', 'bagpipe', 'banjo', 'bassoon', 'cello', 'clarinet', 'congas', 'drum', 'electric_bass',
+                                 'erhu', 'flute', 'guzheng', 'piano', 'pipa', 'saxophone', 'trumpet', 'tuba', 'ukulele', 'violin', 'xylophone'])
+    plt.title('Confusion Matrix Frame', fontsize=18)
     plt.savefig("confusion.png")
     plt.close()
 
@@ -593,6 +700,7 @@ def train_audio(net_audio, loader, optimizer, device, crit, epoch_iters, epoch, 
 
     # Turn on gradient calculation so that the system keeps and updates gradients
     torch.set_grad_enabled(True)
+    net_audio.train()
 
     outputs = 0
 
@@ -644,6 +752,7 @@ def trainFrame(net_image, loader, optimizer, device, crit):
     """Trains the frame network for one epoch"""
     running_loss = 0.0
     torch.set_grad_enabled(True)
+    net_image.train()
 
     for i, data in enumerate(loader, 0):
         inputs, labels = data[0].to(device), data[1].to(device)
@@ -689,8 +798,11 @@ def main(args):
     dataset_test_audio = AudioDataset(args['csvVal'], args, setType='val')
 
     dataset_val_duet = DuetDataset(args['csvDuetTrain'], args, setType='val')
-    dataset_test_combined = CombinedDataset(
-        args['csvVal'], args, setType='val')
+
+    if args['evalCombined']:
+        dataset_eval_combined = CombinedDataset(args['csvVal'], args, setType='val')
+    else:
+        dataset_eval_combined = CombinedDataset(args['csvVal'], args, setType='test')
 
     # Init the dataloader classes with datasets
     loader_image_train = torch.utils.data.DataLoader(
@@ -728,8 +840,8 @@ def main(args):
         drop_last=True,
         shuffle=False
     )
-    loader_combined_test = torch.utils.data.DataLoader(
-        dataset_test_combined,
+    loader_combined_eval = torch.utils.data.DataLoader(
+        dataset_eval_combined,
         batch_size=batch_size,
         num_workers=args['workers'],
         drop_last=True,
@@ -744,6 +856,7 @@ def main(args):
 
         # Add network to used device
         net_audio.to(device)
+        print(len(dataset_test_audio))
 
         # Create optimizer
         optimizer = create_optimizer_audio(net_audio, args)
@@ -835,9 +948,8 @@ def main(args):
         print(eval_accuracy)
 
     # EVAL COMBINED
-    if args['evalCombined']:
-
-        epoch_iters = len(loader_combined_test) // batch_size
+    if args['evalCombined'] or args['testCombined']:
+        epoch_iters = len(loader_combined_eval) // batch_size
         print('1 Epoch = {} iters'.format(epoch_iters))
 
         # Add both networks to GPU
@@ -869,6 +981,9 @@ def main(args):
         eval_sdrs = []
         eval_sirs = []
         eval_sars = []
+        eval_dices = []
+        eval_ious = []
+        eval_frame_accs = []
 
         for epoch in range(args['epochs']):
             # Init the path object for saving plots and images
@@ -881,21 +996,27 @@ def main(args):
             if epoch % 1 == 0:
                 makedirs(path, False)
                 # Evaluate model and store metrics for plotting
-                eval_loss, eval_sdr, eval_sir, eval_sar = evaluate_combined(
-                    nets, loader_combined_test, epoch, args, crit, device, path)
+                eval_loss, eval_sdr, eval_sir, eval_sar, eval_dice, eval_iou, eval_frame_acc = evaluate_combined(
+                    nets, loader_combined_eval, epoch, args, crit, device, path)
                 eval_losses.append(eval_loss.item())
                 eval_sdrs.append(eval_sdr.item())
                 eval_sirs.append(eval_sir.item())
                 eval_sars.append(eval_sar.item())
+                eval_dices.append(eval_dice)
+                eval_ious.append(eval_iou)
+                eval_frame_accs.append(eval_frame_acc)
 
                 # Plot metrics
                 save_and_plot_metrics(
                     path, train_losses, eval_losses, eval_sdrs, eval_sirs, eval_sars)
-                # if epoch % 4 == 0:
-                #    args['threshold'] += 0.1
+                # if epoch % 5 == 0:
+                #   args['threshold'] += 0.1
         print("Average SDR: ", str(sum(eval_sdrs)/args['epochs']))
         print("Average SIR: ", str(sum(eval_sirs)/args['epochs']))
         print("Average SAR: ", str(sum(eval_sars)/args['epochs']))
+        print("Average DICE: ", str(sum(eval_dices)/args['epochs']))
+        print("Average IOU: ", str(sum(eval_ious)/args['epochs']))
+        print("Average Frame Accuracy: ", str(sum(eval_frame_accs)/args['epochs']))
 
     # PROCESS DUETS
     if args['evalDuet']:
@@ -936,8 +1057,8 @@ def main(args):
 
             evaluate_duet(nets, loader_duet_test, epoch,
                          args, crit, device, path)
-            # if epoch % 1 == 0:
-            #args['threshold'] += 0.1
+            if epoch % 1 == 0:
+                args['threshold'] += 0.05
 
 
 if __name__ == '__main__':

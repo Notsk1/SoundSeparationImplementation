@@ -3,7 +3,7 @@
 Definition of the combined dataset class that is used by the dataloader to
 test the system.
 
-Last modified May 2022
+Last modified September 2022
 Author Petteri Nuotiomaa
 ------------------------------------------------------------------------
 """
@@ -49,7 +49,7 @@ class CombinedDataset(torchdata.Dataset):
         for row in csv.reader(open(csvFile, 'r'), delimiter=','):
             if len(row) < 2:
                 continue
-            # if setCutOff > 10:
+            #if setCutOff > 10:
             #    break
             # [0] audio path, [1] frame path, [2] number of frames
             self.dataList.append(row)
@@ -63,6 +63,12 @@ class CombinedDataset(torchdata.Dataset):
                     classAmount[label] = classAmount[label] + 1
                     classFiles[label].append(row)
             setCutOff += 1
+        
+        if self.setType == 'val':
+            self.dataList = self.dataList[0:(len(self.dataList)//2)]
+        if self.setType == 'test':
+            self.dataList = self.dataList[(len(self.dataList)//2):]
+
 
         # Add more samples to instruments that are less represented
         if self.setType == 'train':
@@ -83,7 +89,7 @@ class CombinedDataset(torchdata.Dataset):
 
     def __getitem__(self, idx):
 
-        ampMix, inputAmp, inputPhase, labels, centers, idxs = self._getaudio_(
+        ampMix, inputAmp, inputPhase, labels, centers, idxs, full_audios, inputAudio_proc = self._getaudio_(
             idx)
         frames = []
         images = []
@@ -97,7 +103,7 @@ class CombinedDataset(torchdata.Dataset):
             images.append(image)
 
         images = np.array(images)
-        return ampMix, inputAmp, inputPhase, torch.tensor(labels), frames, torch.tensor(images)
+        return ampMix, inputAmp, inputPhase, torch.tensor(labels), frames, torch.tensor(images), full_audios, inputAudio_proc
 
     def _getframe_(self, idx, center):
         # Get path
@@ -162,6 +168,11 @@ class CombinedDataset(torchdata.Dataset):
         ampMix = torch.zeros(size)
         ampMix[self.classes.index(label), :, :] = amp
 
+        # Store audio for SDR, SAR, SIR
+        full_audios = np.zeros((2, inputAudio_proc.shape[0]))
+        full_audios[0, :] = inputAudio_proc
+
+
         # Use each one of the spectograms magnitude information
         # so that every channel of the U-net outputs one instrument (adds up to 21 channels)
         i = 0
@@ -187,6 +198,8 @@ class CombinedDataset(torchdata.Dataset):
 
                 ampMix[self.classes.index(sampleLabel), :, :] = amp
 
+                full_audios[1, :] = audio_proc
+
                 # Limit to one instance of the same instrument per audiomix
                 usedLabels.append(sampleLabel)
             else:
@@ -196,7 +209,7 @@ class CombinedDataset(torchdata.Dataset):
         inputAmp, inputPhase = self._stft_(inputAudio_proc)
         inputAmp = inputAmp[None, ...]
 
-        return ampMix, inputAmp, inputPhase, labels, centers, idxs
+        return ampMix, inputAmp, inputPhase, labels, centers, idxs, full_audios, inputAudio_proc
 
     def _stft_(self, audio):
         spec = librosa.stft(

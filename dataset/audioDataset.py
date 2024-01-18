@@ -1,9 +1,9 @@
 """
 ------------------------------------------------------------------------
-Definiton of the audio dataset class that is used by the dataloader to
+Definition of the audio dataset class that is used by the dataloader to
 train the audio only system
 
-Last modified May 2022
+Last modified September 2023
 Author Petteri Nuotiomaa
 ------------------------------------------------------------------------
 """
@@ -45,12 +45,13 @@ class AudioDataset(torchdata.Dataset):
         classFiles = {}
         classAmount = {}
         setCutOff = 0
+
         for row in csv.reader(open(csvFile, 'r'), delimiter=','):
             if len(row) < 2:
                 continue
 
-            if setCutOff > 10:
-                break
+            #if setCutOff > 10:
+            #    break
 
             # [0] audio path, [1] frame path, [2] number of frames
             self.dataList.append(row)
@@ -64,6 +65,10 @@ class AudioDataset(torchdata.Dataset):
                     classAmount[label] = classAmount[label] + 1
                     classFiles[label].append(row)
             setCutOff += 1
+        if self.setType == 'val':
+            self.dataList = self.dataList[0:(len(self.dataList)//2)]
+        if self.setType == 'test':
+            self.dataList = self.dataList[(len(self.dataList)//2):]
 
         # Add more samples to instruments that are less represented
         if self.setType == 'train':

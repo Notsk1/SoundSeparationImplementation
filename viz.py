@@ -3,7 +3,7 @@
 This files defines a class that helps at visualizing the outputs of the
 system.
 
-Last modified May 2022
+Last modified September 2023
 Author Petteri Nuotiomaa
 ------------------------------------------------------------------------
 """
@@ -116,7 +116,7 @@ def output_visuals(viz_rows, inputAmps, output, groundTruth, labels, inputAudio,
             groundTruth1 = groundTruth[labels[0][i].item()]
         elif args['lossFunc'] == 'cross':
             if args['crossProb']:
-                groundTruth1 = (groundTruth[labels[0][i].item()] > 0.5)
+                groundTruth1 = (groundTruth[labels[0][i].item()] > args['gt_threshold'])
             else:
                 groundTruth1 = (groundTruth == labels[0][i].item())
         groundMaskFile = path + filePath + "/GTMask{}.png".format(i)
