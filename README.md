@@ -35,7 +35,7 @@ Model outputs two spectrograms that can be formed back to a separated audio trac
 
 Example training sample output:
 
-Input audio mixzture spectogram:
+Input audio mixture spectogram:
 
 ![InputSpec](https://user-images.githubusercontent.com/66205961/217004727-c2b5171b-7703-4bfd-a98f-e006d14e86ec.png)
 
@@ -43,11 +43,11 @@ Instrument 1 Frame:
 
 ![frame0](https://user-images.githubusercontent.com/66205961/216768730-4493b26f-9d1a-45ed-8bb8-8c0f8f790fef.png) 
 
-Instrument 1 Ground Truth Audio Spectrogram: 
+Instrument 1 Ground Truth Audio Spectrogram Binary Mask: 
 
 ![GTMask0](https://user-images.githubusercontent.com/66205961/216768765-0267bf45-459e-443f-9e1e-ca668e831cd4.png) 
 
-Instrument 1 Predicted Audio Spectrogram: 
+Instrument 1 Predicted Audio Spectrogram Binary Mask: 
 
 ![outputMask0](https://user-images.githubusercontent.com/66205961/216768912-f9cda656-a610-4ef0-aa15-91f3bf5ea549.png) 
 
@@ -55,11 +55,11 @@ Instrument 2 Frame:
 
 ![frame1](https://user-images.githubusercontent.com/66205961/216768802-1fff3aab-b674-4599-bbfb-1967e8d10e04.png) 
 
-Instrument 2 Ground Truth Audio Spectrogram: 
+Instrument 2 Ground Truth Audio Spectrogram Binary Mask: 
 
 ![GTMask1](https://user-images.githubusercontent.com/66205961/216768845-186f9157-fcd5-4378-aceb-f1bdb60fbb5f.png) 
 
-Instrument 2 Predicted Audio Spectrogram: 
+Instrument 2 Predicted Audio Spectrogram Binary Mask: 
 
 ![outputMask1](https://user-images.githubusercontent.com/66205961/216768848-7909e83e-5aab-450a-b251-3f9f55be0ad7.png) 
 
