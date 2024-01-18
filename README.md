@@ -65,6 +65,10 @@ Instrument 2 Predicted Audio Spectrogram Binary Mask:
 
 ### Duet Output 
 
+Two duet outputs:
+
+![duet_output](https://github.com/Notsk1/SoundSeparationImplementation/assets/66205961/42a97922-e231-4c60-8340-54dc71e19b68)
+
 
 ## Authors 
 
